@@ -808,6 +808,6 @@ function matchNodes (scope, node, def) {
 }
 
 },{"./key_map":3}],5:[function(require,module,exports){
-window.simulacra = require('../lib')
+window.simulacra = require('../lib/index')
 
-},{"../lib":2}]},{},[5]);
+},{"../lib/index":2}]},{},[5]);

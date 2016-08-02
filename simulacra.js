@@ -1,6 +1,6 @@
 /*!
  * Simulacra.js
- * Version 1.2.3
+ * Version 1.2.4
  * MIT License
  * https://github.com/0x8890/simulacra
  */
@@ -107,8 +107,6 @@ function bindKey (scope, obj, def, key, parentNode, path) {
   function parentSetter (x) {
     var previousValue = memo[key]
 
-    memo[key] = x
-
     // Check for no-op.
     if (x === previousValue) return x
 
@@ -119,6 +117,9 @@ function bindKey (scope, obj, def, key, parentNode, path) {
     else if (change)
       change(parentNode, x, previousValue, keyPath)
 
+    // If nothing went wrong, set the memoized value.
+    memo[key] = x
+
     return x
   }
 
@@ -126,7 +127,6 @@ function bindKey (scope, obj, def, key, parentNode, path) {
     var fragment, value, currentNode
     var a, b, i, j
 
-    memo[key] = x
     valueIsArray = meta.valueIsArray = Array.isArray(x)
     value = valueIsArray ? x : [ x ]
 
@@ -178,6 +178,9 @@ function bindKey (scope, obj, def, key, parentNode, path) {
     // allowing for garbage collection.
     if (value.length !== previousValues.length)
       previousValues.length = activeNodes.length = value.length
+
+    // If nothing went wrong, set the memoized value.
+    memo[key] = x
 
     return x
   }

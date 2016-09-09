@@ -1,12 +1,11 @@
 /*!
  * Simulacra.js
- * Version 1.2.4
+ * Version 1.3.2
  * MIT License
  * https://github.com/0x8890/simulacra
  */
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 'use strict'
-
 var processNodes = require('./process_nodes')
 var keyMap = require('./key_map')
 
@@ -23,6 +22,9 @@ var storeMemo = new WeakMap()
 
 // Internal meta-information about objects.
 var storeMeta = new WeakMap()
+
+// Element tag names for elements that should update data on change.
+var updateTags = [ 'INPUT', 'TEXTAREA' ]
 
 
 module.exports = bindKeys
@@ -41,7 +43,7 @@ module.exports = bindKeys
  * @param {Array} path
  */
 function bindKeys (scope, obj, def, parentNode, path) {
-  var i, j, meta, keys, key, keyPath
+  var meta, key, keyPath
 
   if (typeof obj !== 'object' || obj === null)
     throw new TypeError(
@@ -52,10 +54,7 @@ function bindKeys (scope, obj, def, parentNode, path) {
   meta = {}
   storeMeta.set(obj, meta)
 
-  keys = Object.keys(def)
-  for (i = 0, j = keys.length; i < j; i++) {
-    key = keys[i]
-
+  for (key in def) {
     keyPath = path.concat(key)
     keyPath.root = path.root
     keyPath.target = obj
@@ -106,6 +105,7 @@ function bindKey (scope, obj, def, key, parentNode, path) {
   // Special case for binding same node as parent.
   function parentSetter (x) {
     var previousValue = memo[key]
+    var returnValue
 
     // Check for no-op.
     if (x === previousValue) return x
@@ -114,8 +114,11 @@ function bindKey (scope, obj, def, key, parentNode, path) {
     if (definition && x != null)
       bindKeys(scope, x, definition, parentNode, keyPath)
 
-    else if (change)
-      change(parentNode, x, previousValue, keyPath)
+    else if (change) {
+      returnValue = change(parentNode, x, previousValue, keyPath)
+      if (returnValue !== void 0)
+        changeValue(parentNode, returnValue, branch[replaceAttributeKey])
+    }
 
     // If nothing went wrong, set the memoized value.
     memo[key] = x
@@ -128,10 +131,11 @@ function bindKey (scope, obj, def, key, parentNode, path) {
     var a, b, i, j
 
     valueIsArray = meta.valueIsArray = Array.isArray(x)
-    value = valueIsArray ? x : [ x ]
 
     // Assign custom mutator methods on the array instance.
     if (valueIsArray) {
+      value = x
+
       // Some mutators such as `sort`, `reverse`, `fill`, `copyWithin` are
       // not present here. That is because they trigger the array index
       // setter functions by assigning on them internally.
@@ -147,6 +151,7 @@ function bindKey (scope, obj, def, key, parentNode, path) {
       for (i = 0, j = value.length; i < j; i++)
         defineIndex(value, i)
     }
+    else value = [ x ]
 
     // Handle rendering to the DOM. This algorithm tries to batch insertions
     // into as few document fragments as possible.
@@ -208,13 +213,10 @@ function bindKey (scope, obj, def, key, parentNode, path) {
     })
   }
 
-  function removeNode (value, previous, i) {
+  function removeNode (value, previousValue, i) {
     var activeNode = activeNodes[i]
     var endPath = keyPath
     var returnValue
-
-    // Cast previous value to null if undefined.
-    var previousValue = previous === void 0 ? null : previous
 
     delete previousValues[i]
 
@@ -238,17 +240,18 @@ function bindKey (scope, obj, def, key, parentNode, path) {
   }
 
   // The return value of this function is a Node to be added, otherwise null.
-  function replaceNode (value, previous, i) {
+  function replaceNode (value, previousValue, i) {
     var activeNode = activeNodes[i]
     var currentNode = node
     var endPath = keyPath
     var returnValue
 
-    // Cast previous value to null if undefined.
-    var previousValue = previous === void 0 ? null : previous
+    // Cast values to null if undefined.
+    if (value === void 0) value = null
+    if (previousValue === void 0) previousValue = null
 
-    // If value is undefined or null, just remove it.
-    if (value == null) {
+    // If value is null, just remove it.
+    if (value === null) {
       removeNode(null, previousValue, i)
       return null
     }
@@ -270,17 +273,26 @@ function bindKey (scope, obj, def, key, parentNode, path) {
 
     else {
       currentNode = activeNode || node.cloneNode(true)
-      returnValue = change ?
-        change(currentNode, value, previousValue, endPath) :
-        value !== void 0 ? value : null
 
-      if (returnValue !== void 0)
-        changeValue(currentNode, returnValue, branch[replaceAttributeKey])
+      if (change) {
+        returnValue = change(currentNode, value, previousValue, endPath)
+        if (returnValue !== void 0)
+          changeValue(currentNode, returnValue, branch[replaceAttributeKey])
+      }
+      else {
+        // Add default update behavior. Note that this event does not get
+        // removed, since it is assumed that it will be garbage collected.
+        if (previousValue === null && ~updateTags.indexOf(currentNode.tagName))
+          currentNode.addEventListener('input',
+            updateChange(branch[replaceAttributeKey], endPath, key))
+
+        changeValue(currentNode, value, branch[replaceAttributeKey])
+      }
+
+      // Do not actually add an element to the DOM if it's only a change
+      // between non-empty values.
+      if (activeNode) return null
     }
-
-    // Do not actually add an element to the DOM if it's only a change
-    // between non-empty values.
-    if (!definition && activeNode) return null
 
     activeNodes[i] = currentNode
 
@@ -410,8 +422,12 @@ function bindKey (scope, obj, def, key, parentNode, path) {
 function changeValue (node, value, attribute) {
   switch (attribute) {
   case 'checked':
-    if (value) node.checked = 'checked'
-    else node.removeAttribute('checked')
+    node.checked = Boolean(value)
+    break
+  case 'value':
+    // Prevent some misbehavior in certain browsers when setting a value to
+    // itself, i.e. text caret not in the correct position.
+    if (node.value !== value) node.value = value
     break
   default:
     node[attribute] = value
@@ -438,7 +454,7 @@ function addToPath (path, keyPath, i) {
   var endPath = keyPath.concat(i)
 
   endPath.root = path.root
-  endPath.target = path.target
+  endPath.target = path.target || path.root
 
   return endPath
 }
@@ -454,6 +470,23 @@ function findTarget (endPath, keyPath) {
     endPath.target = endPath.target[keyPath[i]]
 }
 
+
+// Internal event listener to update data on input change.
+function updateChange (targetKey, path, key) {
+  var target = path.target
+  var lastKey = path[path.length - 1]
+  var replaceKey = key
+
+  if (typeof lastKey === 'number') {
+    target = target[key]
+    replaceKey = lastKey
+  }
+
+  return function handleChange (event) {
+    target[replaceKey] = event.target[targetKey]
+  }
+}
+
 },{"./key_map":3,"./process_nodes":4}],2:[function(require,module,exports){
 'use strict'
 
@@ -467,7 +500,7 @@ var replaceAttributeKey = keyMap.replaceAttribute
 var isBoundToParentKey = keyMap.isBoundToParent
 var isProcessedKey = keyMap.isProcessed
 
-// Node names which should have value replaced.
+// Element tag names which should have value replaced.
 var replaceValue = [ 'INPUT', 'TEXTAREA', 'PROGRESS' ]
 
 // Input types which use the "checked" attribute.
@@ -544,15 +577,12 @@ function simulacra (obj, def) {
 function ensureNodes (scope, parentNode, def) {
   var Element = scope ? scope.Element : window.Element
   var adjacentNodes = []
-  var i, j, defKeys, key, query, branch, boundNode, ancestorNode
+  var i, j, key, query, branch, boundNode, ancestorNode
 
   if (typeof def !== 'object') throw new TypeError(
     'The second position must be an object.')
 
-  defKeys = Object.keys(def)
-
-  for (i = 0, j = defKeys.length; i < j; i++) {
-    key = defKeys[i]
+  for (key in def) {
     branch = def[key]
 
     // Change function or definition object bound to parent.
@@ -598,13 +628,15 @@ function ensureNodes (scope, parentNode, def) {
     if (parentNode === boundNode) {
       Object.defineProperty(branch, isBoundToParentKey, { value: true })
       if (branch[hasDefinitionKey]) ensureNodes(scope, boundNode, branch[1])
-      else if (typeof branch[1] !== 'function')
-        console.warn( // eslint-disable-line
-          'A change function was not defined on the key "' + key + '".')
+      else if (typeof branch[1] === 'function')
+        setReplaceAttribute(branch, boundNode)
+      else console.warn( // eslint-disable-line
+        'A change function was not defined on the key "' + key + '".')
       setFrozen(branch)
       continue
     }
-    else adjacentNodes.push([ key, boundNode ])
+
+    adjacentNodes.push([ key, boundNode ])
 
     if (!parentNode.contains(boundNode))
       throw new Error('The bound DOM element must be either ' +
@@ -616,19 +648,13 @@ function ensureNodes (scope, parentNode, def) {
       continue
     }
 
-    Object.defineProperty(branch, replaceAttributeKey, {
-      value: ~replaceValue.indexOf(boundNode.nodeName) ?
-        ~replaceChecked.indexOf(boundNode.type) ?
-        'checked' : 'value' : 'textContent'
-    })
-
+    setReplaceAttribute(branch, boundNode)
     setFrozen(branch)
   }
 
   // Need to loop again to invalidate containment in adjacent nodes, after the
   // adjacent nodes are found.
-  for (i = 0, j = defKeys.length; i < j; i++) {
-    key = defKeys[i]
+  for (key in def) {
     boundNode = def[key][0]
     for (i = 0, j = adjacentNodes.length; i < j; i++)
       if (adjacentNodes[i][1].contains(boundNode) &&
@@ -640,6 +666,15 @@ function ensureNodes (scope, parentNode, def) {
 
   // Freeze the definition.
   setFrozen(def)
+}
+
+
+function setReplaceAttribute (branch, boundNode) {
+  Object.defineProperty(branch, replaceAttributeKey, {
+    value: ~replaceValue.indexOf(boundNode.nodeName) ?
+      ~replaceChecked.indexOf(boundNode.type) ?
+      'checked' : 'value' : 'textContent'
+  })
 }
 
 
@@ -746,14 +781,12 @@ module.exports = processNodes
  */
 function processNodes (scope, node, def) {
   var document = scope ? scope.document : window.document
-  var defKeys = Object.keys(def)
-  var i, j, branch, key, mirrorNode, parent, marker, map
+  var key, branch, mirrorNode, parent, marker, map
 
   node = node.cloneNode(true)
   map = matchNodes(scope, node, def)
 
-  for (i = 0, j = defKeys.length; i < j; i++) {
-    key = defKeys[i]
+  for (key in def) {
     branch = def[key]
     if (branch[isBoundToParentKey]) continue
 
@@ -791,11 +824,10 @@ function matchNodes (scope, node, def) {
   var NodeFilter = scope ? scope.NodeFilter : window.NodeFilter
   var treeWalker = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT)
   var map = new WeakMap()
-  var defKeys = Object.keys(def)
   var nodes = []
-  var i, j, currentNode
+  var i, j, key, currentNode
 
-  for (i = 0, j = defKeys.length; i < j; i++) nodes.push(def[defKeys[i]][0])
+  for (key in def) nodes.push(def[key][0])
 
   while (treeWalker.nextNode() && nodes.length)
     for (i = 0, j = nodes.length; i < j; i++) {

@@ -1,6 +1,6 @@
 /*!
  * Simulacra.js
- * Version 1.3.2
+ * Version 1.4.1
  * MIT License
  * https://github.com/0x8890/simulacra
  */
@@ -487,13 +487,97 @@ function updateChange (targetKey, path, key) {
   }
 }
 
-},{"./key_map":3,"./process_nodes":4}],2:[function(require,module,exports){
+},{"./key_map":4,"./process_nodes":5}],2:[function(require,module,exports){
+'use strict'
+
+var keyMap = require('./key_map')
+var retainElement = keyMap.retainElement
+var hasRAF = typeof requestAnimationFrame === 'function'
+
+
+module.exports = {
+
+  setDefault: function (node, value) {
+    return value != null ? value : void 0
+  },
+
+  bindEvents: function (events, useCapture) {
+    if (useCapture === void 0) useCapture = false
+
+    return function (node, value, previousValue) {
+      var key
+
+      if (value == null)
+        for (key in events)
+          node.removeEventListener(key, events[key], useCapture)
+      else if (previousValue == null)
+        for (key in events)
+          node.addEventListener(key, events[key], useCapture)
+    }
+  },
+
+  animate: function (insertClass, mutateClass, removeClass, retainTime) {
+    return function (node, value, previousValue) {
+      if (!('classList' in node)) return void 0
+
+      if (value == null) {
+        if (insertClass) node.classList.remove(insertClass)
+        if (removeClass) node.classList.add(removeClass)
+        if (retainTime) {
+          setTimeout(function () {
+            node.parentNode.removeChild(node)
+          }, retainTime)
+
+          return retainElement
+        }
+      }
+      else if (value != null && previousValue != null && mutateClass) {
+        if (node.classList.contains(mutateClass)) {
+          node.classList.remove(mutateClass)
+
+          // Hack to trigger reflow.
+          void node.offsetWidth
+        }
+
+        node.classList.add(mutateClass)
+      }
+      else if (previousValue == null && insertClass)
+        // Hack to trigger class addition after it is inserted.
+        if (hasRAF) requestAnimationFrame(function () {
+          node.classList.add(insertClass)
+        })
+        else node.classList.add(insertClass)
+
+      return void 0
+    }
+  },
+
+  chain: function () {
+    var args = arguments
+
+    return function (node, value, previousValue, path) {
+      var i, returnValue, result
+
+      for (i = 0; i < args.length; i++) {
+        returnValue = args[i](node, value, previousValue, path)
+        if (returnValue !== void 0) result = returnValue
+      }
+
+      return result
+    }
+  }
+
+}
+
+},{"./key_map":4}],3:[function(require,module,exports){
 'use strict'
 
 var processNodes = require('./process_nodes')
 var bindKeys = require('./bind_keys')
 var keyMap = require('./key_map')
+var helpers = require('./helpers')
 
+var helper
 var isArray = Array.isArray
 var hasDefinitionKey = keyMap.hasDefinition
 var replaceAttributeKey = keyMap.replaceAttribute
@@ -517,6 +601,10 @@ Object.defineProperty(simulacra, 'useCommentNode', {
   set: function (value) { processNodes.useCommentNode = value },
   enumerable: true
 })
+
+// Assign helpers.
+for (helper in helpers)
+  simulacra[helper] = helpers[helper]
 
 
 module.exports = simulacra
@@ -732,7 +820,7 @@ function featureCheck (globalScope) {
   }
 }
 
-},{"./bind_keys":1,"./key_map":3,"./process_nodes":4}],3:[function(require,module,exports){
+},{"./bind_keys":1,"./helpers":2,"./key_map":4,"./process_nodes":5}],4:[function(require,module,exports){
 'use strict'
 
 var keys = [
@@ -753,7 +841,7 @@ for (i = 0, j = keys.length; i < j; i++)
 
 module.exports = keyMap
 
-},{}],4:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 'use strict'
 
 var keyMap = require('./key_map')
@@ -842,7 +930,7 @@ function matchNodes (scope, node, def) {
   return map
 }
 
-},{"./key_map":3}],5:[function(require,module,exports){
+},{"./key_map":4}],6:[function(require,module,exports){
 window.simulacra = require('../lib/index')
 
-},{"../lib/index":2}]},{},[5]);
+},{"../lib/index":3}]},{},[6]);

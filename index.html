@@ -102,7 +102,11 @@ AAAA+B8AAPAHAADgAwAAwAEAAOABAADgAQAA4AEAAOADAADgAwAA8AsAAPAPAAD8HwAA/B8AAP4fAAD/
 
   var change = chain(
     setDefault,
-    bindEvents({ click: function (event) { alert('Click!') } }),
+    bindEvents({
+      click: function (event) {
+        event.target.classList.toggle('alternate')
+      }
+    }),
     animate('fade-in', 'bounce', 'fade-out', 2000))
 
   simulacra.useCommentNode = true
@@ -112,7 +116,6 @@ AAAA+B8AAPAHAADgAwAAwAEAAOABAADgAQAA4AEAAOADAADgAwAA8AsAAPAPAAD8HwAA/B8AAP4fAAD/
       numbers: [ '.block', change ]
     } ]))
 
-  setInterval(setData, 250)
   setData()
 
   function setData () {
@@ -125,6 +128,8 @@ AAAA+B8AAPAHAADgAwAAwAEAAOABAADgAQAA4AEAAOADAADgAwAA8AsAAPAPAAD8HwAA/B8AAP4fAAD/
         data.numbers[i] = number
       }
     }
+
+    setTimeout(setData, Math.random() * 400 + 100)
   }
 }()</script></div><p>Simulacra.js includes some built-in helper functions for common use cases, such as event listening and animations. To use them, one can define a <em>change</em> function like so:</p><pre><code class="lang-js"><span class="hljs-keyword">var</span> simulacra = <span class="hljs-built_in">require</span>(<span class="hljs-string">'simulacra'</span>)
 <span class="hljs-keyword">var</span> chain = simulacra.chain
@@ -139,7 +144,11 @@ AAAA+B8AAPAHAADgAwAAwAEAAOABAADgAQAA4AEAAOADAADgAwAA8AsAAPAPAAD8HwAA/B8AAP4fAAD/
   <span class="hljs-comment">// Accepts a hash keyed by event names, using this has the advantage of</span>
   <span class="hljs-comment">// automatically removing event listeners, even if the element is still</span>
   <span class="hljs-comment">// in the DOM. The optional second argument is `useCapture`.</span>
-  bindEvents({ click: <span class="hljs-function"><span class="hljs-keyword">function</span> (<span class="hljs-params">event</span>) </span>{ alert(<span class="hljs-string">'Click!'</span>) } }),
+  bindEvents({
+    click: <span class="hljs-function"><span class="hljs-keyword">function</span> (<span class="hljs-params">event</span>) </span>{
+      event.target.classList.toggle(<span class="hljs-string">'alternate'</span>)
+    }
+  }),
 
   <span class="hljs-comment">// Accepts class names on insert, mutate, and remove, and a time in ms for</span>
   <span class="hljs-comment">// how long to retain an element after removal.</span>

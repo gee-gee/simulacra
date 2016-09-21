@@ -221,6 +221,8 @@ function bindKey (scope, obj, def, key, parentNode, path) {
     delete previousValues[i]
 
     if (activeNode) {
+      delete activeNodes[i]
+
       if (valueIsArray) endPath = addToPath(path, keyPath, i)
 
       if (change)
@@ -234,8 +236,6 @@ function bindKey (scope, obj, def, key, parentNode, path) {
       // skip removing the element from the DOM.
       if (returnValue !== retainElementKey)
         marker.parentNode.removeChild(activeNode)
-
-      delete activeNodes[i]
     }
   }
 

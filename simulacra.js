@@ -1,6 +1,6 @@
 /*!
  * Simulacra.js
- * Version 1.4.1
+ * Version 1.4.4
  * MIT License
  * https://github.com/0x8890/simulacra
  */
@@ -492,7 +492,8 @@ function updateChange (targetKey, path, key) {
 
 var keyMap = require('./key_map')
 var retainElement = keyMap.retainElement
-var hasRAF = typeof requestAnimationFrame === 'function'
+var hasMutationObserver = typeof MutationObserver !== 'undefined'
+var hasDocument = typeof document !== 'undefined'
 
 
 module.exports = {
@@ -502,22 +503,34 @@ module.exports = {
   },
 
   bindEvents: function (events, useCapture) {
+    var listeners = {}
+
     if (useCapture === void 0) useCapture = false
 
-    return function (node, value, previousValue) {
+    return function (node, value, previousValue, path) {
       var key
 
       if (value == null)
         for (key in events)
-          node.removeEventListener(key, events[key], useCapture)
+          node.removeEventListener(key, listeners[key], useCapture)
       else if (previousValue == null)
-        for (key in events)
-          node.addEventListener(key, events[key], useCapture)
+        for (key in events) {
+          listeners[key] = makeEventListener(events[key], path)
+          node.addEventListener(key, listeners[key], useCapture)
+        }
+    }
+
+    function makeEventListener (fn, path) {
+      return function eventListener (event) {
+        return fn(event, path)
+      }
     }
   },
 
   animate: function (insertClass, mutateClass, removeClass, retainTime) {
     return function (node, value, previousValue) {
+      var observer
+
       if (!('classList' in node)) return void 0
 
       if (value == null) {
@@ -542,10 +555,32 @@ module.exports = {
         node.classList.add(mutateClass)
       }
       else if (previousValue == null && insertClass)
-        // Hack to trigger class addition after it is inserted.
-        if (hasRAF) requestAnimationFrame(function () {
-          node.classList.add(insertClass)
-        })
+        // Trigger class addition after the element is inserted.
+        if (hasMutationObserver && hasDocument) {
+          observer = new MutationObserver(function (mutations) {
+            var i, j, k, l, mutation, addedNode
+
+            for (i = 0, j = mutations.length; i < j; i++) {
+              mutation = mutations[i]
+
+              for (k = 0, l = mutation.addedNodes.length; k < l; k++) {
+                addedNode = mutation.addedNodes[k]
+
+                if (addedNode === node) {
+                  // Hack to trigger reflow.
+                  void node.offsetWidth
+
+                  node.classList.add(insertClass)
+                  observer.disconnect()
+                }
+              }
+            }
+          })
+
+          observer.observe(document.documentElement, {
+            childList: true, subtree: true
+          })
+        }
         else node.classList.add(insertClass)
 
       return void 0
@@ -634,12 +669,16 @@ function simulacra (obj, def) {
     query = def[0]
     def[0] = document.querySelector(query)
     if (!def[0]) throw new Error(
-      'Top-level node "' + query + '" could not be found in the document.')
+      'Top-level Node "' + query + '" could not be found in the document.')
   }
   else if (!(def[0] instanceof Node)) throw new TypeError(
-    'The first position of top-level must be a Node or a CSS selector string.')
+    'The first position of the top-level must be either a Node or a CSS ' +
+    'selector string.')
 
   if (!def[isProcessedKey]) {
+    // Auto-detect template tag.
+    if ('content' in def[0]) def[0] = def[0].content
+
     ensureNodes(this, def[0], def[1])
     setFrozen(def)
   }
@@ -659,7 +698,7 @@ function simulacra (obj, def) {
  * they are allowed.
  *
  * @param {Object} [scope]
- * @param {Node} parentNode
+ * @param {Element} parentNode
  * @param {Object} def
  */
 function ensureNodes (scope, parentNode, def) {
@@ -684,7 +723,7 @@ function ensureNodes (scope, parentNode, def) {
     else if (!Array.isArray(branch))
       throw new TypeError('The binding on key "' + key + '" is invalid.')
 
-    // Dereference CSS selector string to actual DOM Node.
+    // Dereference CSS selector string to actual DOM element.
     if (typeof branch[0] === 'string') {
       query = branch[0]
 
@@ -699,6 +738,9 @@ function ensureNodes (scope, parentNode, def) {
     else if (!(branch[0] instanceof Element))
       throw new TypeError('The first position on key "' + key +
         '" must be a DOM element or a CSS selector string.')
+
+    // Auto-detect template tag.
+    if ('content' in branch[0]) branch[0] = branch[0].content
 
     boundNode = branch[0]
 

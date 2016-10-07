@@ -9,7 +9,7 @@ MKb/4yzN/+IrzP/mV+D/52bi/+In0P/jKdH/5C65/+Mwv//jMLn/4DOe/wAAAAAAAAAAAAAAAAAAAADb
 AAAAAAAAAAAAAAAAAAAAANk4cP/cN4X/2zh9/9w3iP/kL7//4y6+/+Qvv//fNZH/2jd4//CVvw3bOH3/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2Tht/9k4bf/bOH3/5C+6/+Quuf/cN4X/3DeF/9o4df8AAAAA2DN0/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPGow2nZOGn/2zh9/+Qwtv/kMLb/2zh9
 /9k4bf/ZOHD/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANs4ff/bOH3/2zh5/9s4ff/ZOGn/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADROFv/2zh9/9s4ff/YOmP/2Dpj/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 AAAAAAAAAAAAAMY6UP/cN33/yzpX/806V/8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAvDlD/8A6R//DOUr/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADgpbUStTg+/wAAAAAAAAAAAAAAAAAAAAAA
-AAAA+B8AAPAHAADgAwAAwAEAAOABAADgAQAA4AEAAOADAADgAwAA8AsAAPAPAAD8HwAA/B8AAP4fAAD/HwAA/58AAA==" rel="icon" type="image/x-icon"><script src="simulacra.min.js"></script><header><h1><span>Simulacra</span>.js</h1><h2>Reactive data binding for web-based user interfaces.</h2><code>npm i simulacra --save #v<span class="version">1.4.4</span></code> <a href="simulacra.min.js" class="button">Download</a> <a href="https://github.com/0x8890/simulacra" id="corner"><span>Fork on </span>GitHub</a></header><article><h2 id="synopsis">Synopsis<a class="anchor" href="#synopsis" title="Link to this section “Synopsis”">#</a></h2><p>Simulacra.js maps changes on objects to the DOM by adding and removing elements and invoking <em>change</em> functions, which by default, assign plain text and form input values. In fact, that is all it does, and its entire API surface area is a single function. It also does not introduce any new syntax or a template language, and is designed to work well with current and future web platform features, such as <a href="http://webcomponents.org/">Web Components</a>.</p><p>It emphasizes <a href="#benchmarks">performance</a> and economy of expression. The approximate size of this library is ~5 KB (minified and gzipped).</p><h2 id="usage">Usage<a class="anchor" href="#usage" title="Link to this section “Usage”">#</a></h2><div><p>With Simulacra.js, any changes on bound objects reflect immediately in the DOM, no manual intervention required. Here is an example of Simulacra.js in action:</p><div class="example"><div class="container"><div class="left"><div class="product-container"></div></div><div class="right"><p>Live demo, try it out:</p><ul><li><code>data.name = "Caramel Latte"</code></li><li><code>data.details.size.push("Trenta")</code></li><li><code>data.details.size = [ 'Tall' ]</code></li></ul><input type="text" name="eval" placeholder="Change data..."></div></div></div><template id="product"><h1 class="name"></h1><div class="details"><div><span class="size"></span></div><hr><h4 class="vendor"></h4></div></template><script>void function () {
+AAAA+B8AAPAHAADgAwAAwAEAAOABAADgAQAA4AEAAOADAADgAwAA8AsAAPAPAAD8HwAA/B8AAP4fAAD/HwAA/58AAA==" rel="icon" type="image/x-icon"><script src="simulacra.min.js"></script><header><h1><span>Simulacra</span>.js</h1><h2>Reactive data binding for web-based user interfaces.</h2><code>npm i simulacra --save #v<span class="version">1.4.5</span></code> <a href="simulacra.min.js" class="button">Download</a> <a href="https://github.com/0x8890/simulacra" id="corner"><span>Fork on </span>GitHub</a></header><article><h2 id="synopsis">Synopsis<a class="anchor" href="#synopsis" title="Link to this section “Synopsis”">#</a></h2><p>Simulacra.js maps changes on objects to the DOM by adding and removing elements and invoking <em>change</em> functions, which by default, assign plain text and form input values. In fact, that is all it does, and its entire API surface area is a single function. It also does not introduce any new syntax or a template language, and is designed to work well with current and future web platform features, such as <a href="http://webcomponents.org/">Web Components</a>.</p><p>It emphasizes <a href="#benchmarks">performance</a> and economy of expression. The approximate size of this library is ~5 KB (minified and gzipped).</p><h2 id="usage">Usage<a class="anchor" href="#usage" title="Link to this section “Usage”">#</a></h2><div><p>With Simulacra.js, any changes on bound objects reflect immediately in the DOM, no manual intervention required. Here is an example of Simulacra.js in action:</p><div class="example"><div class="container"><div class="left"><div class="product-container"></div></div><div class="right"><p>Live demo, try it out:</p><ul><li><code>data.name = "Caramel Latte"</code></li><li><code>data.details.size.push("Trenta")</code></li><li><code>data.details.size = [ 'Tall' ]</code></li></ul><input type="text" name="eval" placeholder="Change data..."></div></div></div><template id="product"><h1 class="name"></h1><div class="details"><div><span class="size"></span></div><hr><h4 class="vendor"></h4></div></template><script>void function () {
   var simulacra = window.simulacra
   var data = window.data = {
     name: 'Pumpkin Spice Latte',
@@ -95,12 +95,12 @@ AAAA+B8AAPAHAADgAwAAwAEAAOABAADgAQAA4AEAAOADAADgAwAA8AsAAPAPAAD8HwAA/B8AAP4fAAD/
 
   var template = document.getElementById('helper')
 
-  var chain = simulacra.chain
+  var flow = simulacra.flow
   var setDefault = simulacra.setDefault
   var bindEvents = simulacra.bindEvents
   var animate = simulacra.animate
 
-  var change = chain(
+  var change = flow(
     setDefault,
     bindEvents({
       click: function (event) {
@@ -132,12 +132,12 @@ AAAA+B8AAPAHAADgAwAAwAEAAOABAADgAQAA4AEAAOADAADgAwAA8AsAAPAPAAD8HwAA/B8AAP4fAAD/
     setTimeout(setData, Math.random() * 250 + 250)
   }
 }()</script></div><p>Simulacra.js includes some built-in helper functions for common use cases, such as event listening and animations. To use them, one can define a <em>change</em> function like so:</p><pre><code class="lang-js"><span class="hljs-keyword">var</span> simulacra = <span class="hljs-built_in">require</span>(<span class="hljs-string">'simulacra'</span>)
-<span class="hljs-keyword">var</span> chain = simulacra.chain
+<span class="hljs-keyword">var</span> flow = simulacra.flow
 <span class="hljs-keyword">var</span> setDefault = simulacra.setDefault
 <span class="hljs-keyword">var</span> bindEvents = simulacra.bindEvents
 <span class="hljs-keyword">var</span> animate = simulacra.animate
 
-<span class="hljs-keyword">var</span> change = chain(
+<span class="hljs-keyword">var</span> change = flow(
   <span class="hljs-comment">// Use default behavior for mapping values to the DOM.</span>
   setDefault,
 

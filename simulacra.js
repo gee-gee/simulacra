@@ -435,7 +435,7 @@ function changeValue (node, value, attribute) {
 }
 
 
-// Find next node.
+// Find next node in a potentially sparse array.
 function getNextNode (index, activeNodes) {
   var i, j, nextNode
 
@@ -460,7 +460,7 @@ function addToPath (path, keyPath, i) {
 }
 
 
-// Update the target.
+// Find and set the new target, when dealing with nested objects.
 function findTarget (endPath, keyPath) {
   var i, j
 
@@ -647,7 +647,7 @@ Object.defineProperty(simulacra, 'useCommentNode', {
   enumerable: true
 })
 
-// Assign helpers.
+// Assign helpers on the main export.
 for (helper in helpers)
   simulacra[helper] = helpers[helper]
 

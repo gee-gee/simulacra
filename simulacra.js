@@ -1,11 +1,12 @@
 /*!
  * Simulacra.js
- * Version 1.4.5
+ * Version 1.5.0
  * MIT License
  * https://github.com/0x8890/simulacra
  */
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 'use strict'
+
 var processNodes = require('./process_nodes')
 var keyMap = require('./key_map')
 
@@ -20,7 +21,8 @@ var retainElementKey = keyMap.retainElement
 // that contains the same keys.
 var storeMemo = new WeakMap()
 
-// Internal meta-information about objects.
+// Internal meta-information about objects. Keyed by bound object and valued by
+// meta-information object.
 var storeMeta = new WeakMap()
 
 // Element tag names for elements that should update data on change.
@@ -28,6 +30,11 @@ var updateTags = [ 'INPUT', 'TEXTAREA' ]
 
 
 module.exports = bindKeys
+
+// Expose internals, for rehydration purposes.
+bindKeys.storeMeta = storeMeta
+bindKeys.addToPath = addToPath
+bindKeys.findTarget = findTarget
 
 
 /**
@@ -81,7 +88,6 @@ function bindKey (scope, obj, def, key, parentNode, path) {
   var change = !branch[hasDefinitionKey] && branch[1]
   var definition = branch[hasDefinitionKey] && branch[1]
   var mount = branch[2]
-  var marker = markerMap.get(branch)
 
   // Temporary keys.
   var keyPath = meta.keyPath
@@ -127,6 +133,7 @@ function bindKey (scope, obj, def, key, parentNode, path) {
   }
 
   function setter (x) {
+    var marker = markerMap.get(branch)
     var fragment, value, currentNode
     var a, b, i, j
 
@@ -196,6 +203,7 @@ function bindKey (scope, obj, def, key, parentNode, path) {
     Object.defineProperty(array, i, {
       get: function () { return value },
       set: function (x) {
+        var marker = markerMap.get(branch)
         var a, b, currentNode
 
         value = x
@@ -214,6 +222,7 @@ function bindKey (scope, obj, def, key, parentNode, path) {
   }
 
   function removeNode (value, previousValue, i) {
+    var marker = markerMap.get(branch)
     var activeNode = activeNodes[i]
     var endPath = keyPath
     var returnValue
@@ -316,6 +325,7 @@ function bindKey (scope, obj, def, key, parentNode, path) {
   }
 
   function push () {
+    var marker = markerMap.get(branch)
     var i = this.length
     var j, fragment, currentNode
 
@@ -347,6 +357,7 @@ function bindKey (scope, obj, def, key, parentNode, path) {
   }
 
   function unshift () {
+    var marker = markerMap.get(branch)
     var i = this.length
     var j, k, fragment, currentNode
 
@@ -374,6 +385,7 @@ function bindKey (scope, obj, def, key, parentNode, path) {
   }
 
   function splice (start, count) {
+    var marker = markerMap.get(branch)
     var insert = []
     var i, j, k, fragment, value, currentNode
 
@@ -567,7 +579,8 @@ function animate (insertClass, mutateClass, removeClass, retainTime) {
     }
     else if (previousValue == null && insertClass)
       // Trigger class addition after the element is inserted.
-      if (hasMutationObserver && hasDocument) {
+      if (hasMutationObserver && hasDocument &&
+        !document.documentElement.contains(node)) {
         observer = new MutationObserver(function (mutations) {
           var i, j, k, l, mutation, addedNode
 
@@ -623,6 +636,10 @@ var keyMap = require('./key_map')
 var helpers = require('./helpers')
 
 var helper
+var markerMap = processNodes.markerMap
+var storeMeta = bindKeys.storeMeta
+var addToPath = bindKeys.addToPath
+var findTarget = bindKeys.findTarget
 var isArray = Array.isArray
 var hasDefinitionKey = keyMap.hasDefinition
 var replaceAttributeKey = keyMap.replaceAttribute
@@ -660,9 +677,10 @@ module.exports = simulacra
  *
  * @param {Object} obj
  * @param {Object} def
+ * @param {Node} [matchNode]
  * @return {Node}
  */
-function simulacra (obj, def) {
+function simulacra (obj, def, matchNode) {
   var document = this ? this.document : window.document
   var Node = this ? this.Node : window.Node
   var node, query, path
@@ -698,6 +716,11 @@ function simulacra (obj, def) {
   path = []
   path.root = obj
   bindKeys(this, obj, def[1], node, path)
+
+  if (matchNode) {
+    rehydrate(this, obj, def[1], node, matchNode)
+    return matchNode
+  }
 
   return node
 }
@@ -821,6 +844,80 @@ function setReplaceAttribute (branch, boundNode) {
 function setFrozen (obj) {
   Object.defineProperty(obj, isProcessedKey, { value: true })
   Object.freeze(obj)
+}
+
+
+// Rehydration of existing DOM nodes by recursively checking equality.
+function rehydrate (scope, obj, def, node, matchNode) {
+  var document = scope ? scope.document : window.document
+  var NodeFilter = scope ? scope.NodeFilter : window.NodeFilter
+
+  var key, branch, x, value, change, definition, mount, keyPath, endPath
+  var meta, valueIsArray, activeNodes, index, treeWalker, currentNode
+
+  for (key in def) {
+    branch = def[key]
+    meta = storeMeta.get(obj)[key]
+    change = !branch[hasDefinitionKey] && branch[1]
+    definition = branch[hasDefinitionKey] && branch[1]
+    mount = branch[2]
+    keyPath = meta.keyPath
+
+    if (branch[isBoundToParentKey]) {
+      x = obj[key]
+
+      if (definition && x != null)
+        bindKeys(scope, x, definition, matchNode, keyPath)
+      else if (change) change(matchNode, x, null, keyPath)
+
+      continue
+    }
+
+    activeNodes = meta.activeNodes
+    if (!activeNodes.length) continue
+
+    valueIsArray = meta.valueIsArray
+    x = valueIsArray ? obj[key] : [ obj[key] ]
+    index = 0
+    treeWalker = document.createTreeWalker(matchNode, NodeFilter.SHOW_ELEMENT)
+
+    while (index < activeNodes.length && treeWalker.nextNode()) {
+      currentNode = activeNodes[index]
+      if (treeWalker.currentNode.isEqualNode(currentNode)) {
+        activeNodes.splice(index, 1, treeWalker.currentNode)
+
+        value = x[index]
+        endPath = keyPath
+
+        if (valueIsArray)
+          endPath = addToPath(keyPath, keyPath, index)
+
+        if (definition) {
+          rehydrate(scope, value, definition,
+            currentNode, treeWalker.currentNode)
+
+          if (mount) {
+            findTarget(endPath, keyPath)
+            mount(treeWalker.currentNode, value, null, endPath)
+          }
+        }
+        else if (change)
+          change(treeWalker.currentNode, value, null, endPath)
+
+        index++
+      }
+    }
+
+    if (index !== activeNodes.length) throw new Error(
+      'Matching nodes could not be found on key "' + key + '".')
+
+    // Rehydrate marker node.
+    currentNode = treeWalker.currentNode
+
+    // Ignore comment node setting, comment may already exist.
+    markerMap.set(branch, currentNode.parentNode.insertBefore(
+      document.createTextNode(''), currentNode.nextSibling))
+  }
 }
 
 

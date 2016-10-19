@@ -499,7 +499,66 @@ function updateChange (targetKey, path, key) {
   }
 }
 
-},{"./key_map":4,"./process_nodes":5}],2:[function(require,module,exports){
+},{"./key_map":5,"./process_nodes":6}],2:[function(require,module,exports){
+'use strict'
+
+
+module.exports = featureCheck
+
+
+/**
+ * Check if capabilities are available, or throw an error.
+ *
+ * @param {*} globalScope
+ */
+function featureCheck (globalScope) {
+  var features = [
+    // ECMAScript features.
+    [ Object, 'defineProperty' ],
+    [ Object, 'freeze' ],
+    [ Object, 'isFrozen' ],
+    [ WeakMap ],
+
+    // DOM features.
+    [ 'document', 'createDocumentFragment' ],
+    [ 'document', 'createTreeWalker' ],
+    [ 'Node', 'prototype', 'appendChild' ],
+    [ 'Node', 'prototype', 'contains' ],
+    [ 'Node', 'prototype', 'insertBefore' ],
+    [ 'Node', 'prototype', 'isEqualNode' ],
+    [ 'Node', 'prototype', 'removeChild' ]
+  ]
+  var i, j, k, l, feature, path
+
+  for (i = 0, j = features.length; i < j; i++) {
+    path = features[i]
+
+    if (typeof path[0] === 'string') {
+      feature = globalScope
+
+      for (k = 0, l = path.length; k < l; k++) {
+        if (!(path[k] in feature)) throw new Error('Missing ' +
+          path.slice(0, k + 1).join('.') + ' feature which is required.')
+
+        feature = feature[path[k]]
+      }
+    }
+
+    else {
+      feature = path[0]
+
+      for (k = 1, l = path.length; k < l; k++) {
+        if (k > 1) feature = feature[path[k]]
+
+        if (typeof feature === 'undefined') throw new Error('Missing ' +
+          path[0].name + path.slice(1, k + 1).join('.') +
+          ' feature which is required.')
+      }
+    }
+  }
+}
+
+},{}],3:[function(require,module,exports){
 'use strict'
 
 var keyMap = require('./key_map')
@@ -627,19 +686,17 @@ function flow () {
   }
 }
 
-},{"./key_map":4}],3:[function(require,module,exports){
+},{"./key_map":5}],4:[function(require,module,exports){
 'use strict'
 
 var processNodes = require('./process_nodes')
 var bindKeys = require('./bind_keys')
 var keyMap = require('./key_map')
 var helpers = require('./helpers')
+var rehydrate = require('./rehydrate')
+var featureCheck = require('./feature_check')
 
 var helper
-var markerMap = processNodes.markerMap
-var storeMeta = bindKeys.storeMeta
-var addToPath = bindKeys.addToPath
-var findTarget = bindKeys.findTarget
 var isArray = Array.isArray
 var hasDefinitionKey = keyMap.hasDefinition
 var replaceAttributeKey = keyMap.replaceAttribute
@@ -846,130 +903,7 @@ function setFrozen (obj) {
   Object.freeze(obj)
 }
 
-
-// Rehydration of existing DOM nodes by recursively checking equality.
-function rehydrate (scope, obj, def, node, matchNode) {
-  var document = scope ? scope.document : window.document
-  var NodeFilter = scope ? scope.NodeFilter : window.NodeFilter
-
-  var key, branch, x, value, change, definition, mount, keyPath, endPath
-  var meta, valueIsArray, activeNodes, index, treeWalker, currentNode
-
-  for (key in def) {
-    branch = def[key]
-    meta = storeMeta.get(obj)[key]
-    change = !branch[hasDefinitionKey] && branch[1]
-    definition = branch[hasDefinitionKey] && branch[1]
-    mount = branch[2]
-    keyPath = meta.keyPath
-
-    if (branch[isBoundToParentKey]) {
-      x = obj[key]
-
-      if (definition && x != null)
-        bindKeys(scope, x, definition, matchNode, keyPath)
-      else if (change) change(matchNode, x, null, keyPath)
-
-      continue
-    }
-
-    activeNodes = meta.activeNodes
-    if (!activeNodes.length) continue
-
-    valueIsArray = meta.valueIsArray
-    x = valueIsArray ? obj[key] : [ obj[key] ]
-    index = 0
-    treeWalker = document.createTreeWalker(matchNode, NodeFilter.SHOW_ELEMENT)
-
-    while (index < activeNodes.length && treeWalker.nextNode()) {
-      currentNode = activeNodes[index]
-      if (treeWalker.currentNode.isEqualNode(currentNode)) {
-        activeNodes.splice(index, 1, treeWalker.currentNode)
-
-        value = x[index]
-        endPath = keyPath
-
-        if (valueIsArray)
-          endPath = addToPath(keyPath, keyPath, index)
-
-        if (definition) {
-          rehydrate(scope, value, definition,
-            currentNode, treeWalker.currentNode)
-
-          if (mount) {
-            findTarget(endPath, keyPath)
-            mount(treeWalker.currentNode, value, null, endPath)
-          }
-        }
-        else if (change)
-          change(treeWalker.currentNode, value, null, endPath)
-
-        index++
-      }
-    }
-
-    if (index !== activeNodes.length) throw new Error(
-      'Matching nodes could not be found on key "' + key + '".')
-
-    // Rehydrate marker node.
-    currentNode = treeWalker.currentNode
-
-    // Ignore comment node setting, comment may already exist.
-    markerMap.set(branch, currentNode.parentNode.insertBefore(
-      document.createTextNode(''), currentNode.nextSibling))
-  }
-}
-
-
-// Feature checks.
-function featureCheck (globalScope) {
-  var features = [
-    // ECMAScript features.
-    [ Object, 'defineProperty' ],
-    [ Object, 'freeze' ],
-    [ Object, 'isFrozen' ],
-    [ WeakMap ],
-
-    // DOM features.
-    [ 'document', 'createDocumentFragment' ],
-    [ 'document', 'createTreeWalker' ],
-    [ 'Node', 'prototype', 'appendChild' ],
-    [ 'Node', 'prototype', 'contains' ],
-    [ 'Node', 'prototype', 'insertBefore' ],
-    [ 'Node', 'prototype', 'isEqualNode' ],
-    [ 'Node', 'prototype', 'removeChild' ]
-  ]
-  var i, j, k, l, feature, path
-
-  for (i = 0, j = features.length; i < j; i++) {
-    path = features[i]
-
-    if (typeof path[0] === 'string') {
-      feature = globalScope
-
-      for (k = 0, l = path.length; k < l; k++) {
-        if (!(path[k] in feature)) throw new Error('Missing ' +
-          path.slice(0, k + 1).join('.') + ' feature which is required.')
-
-        feature = feature[path[k]]
-      }
-    }
-
-    else {
-      feature = path[0]
-
-      for (k = 1, l = path.length; k < l; k++) {
-        if (k > 1) feature = feature[path[k]]
-
-        if (typeof feature === 'undefined') throw new Error('Missing ' +
-          path[0].name + path.slice(1, k + 1).join('.') +
-          ' feature which is required.')
-      }
-    }
-  }
-}
-
-},{"./bind_keys":1,"./helpers":2,"./key_map":4,"./process_nodes":5}],4:[function(require,module,exports){
+},{"./bind_keys":1,"./feature_check":2,"./helpers":3,"./key_map":5,"./process_nodes":6,"./rehydrate":7}],5:[function(require,module,exports){
 'use strict'
 
 var keys = [
@@ -990,7 +924,7 @@ for (i = 0, j = keys.length; i < j; i++)
 
 module.exports = keyMap
 
-},{}],5:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
 'use strict'
 
 var keyMap = require('./key_map')
@@ -1079,7 +1013,106 @@ function matchNodes (scope, node, def) {
   return map
 }
 
-},{"./key_map":4}],6:[function(require,module,exports){
+},{"./key_map":5}],7:[function(require,module,exports){
+'use strict'
+
+var processNodes = require('./process_nodes')
+var bindKeys = require('./bind_keys')
+var keyMap = require('./key_map')
+
+var hasDefinitionKey = keyMap.hasDefinition
+var isBoundToParentKey = keyMap.isBoundToParent
+var markerMap = processNodes.markerMap
+var storeMeta = bindKeys.storeMeta
+var addToPath = bindKeys.addToPath
+var findTarget = bindKeys.findTarget
+
+
+module.exports = rehydrate
+
+
+/**
+ * Rehydration of existing DOM nodes by recursively checking equality.
+ *
+ * @param {*} scope
+ * @param {Object} obj
+ * @param {Object} def
+ * @param {Node} node
+ * @param {Node} matchNode
+ */
+function rehydrate (scope, obj, def, node, matchNode) {
+  var document = scope ? scope.document : window.document
+  var NodeFilter = scope ? scope.NodeFilter : window.NodeFilter
+
+  var key, branch, x, value, change, definition, mount, keyPath, endPath
+  var meta, valueIsArray, activeNodes, index, treeWalker, currentNode
+
+  for (key in def) {
+    branch = def[key]
+    meta = storeMeta.get(obj)[key]
+    change = !branch[hasDefinitionKey] && branch[1]
+    definition = branch[hasDefinitionKey] && branch[1]
+    mount = branch[2]
+    keyPath = meta.keyPath
+
+    if (branch[isBoundToParentKey]) {
+      x = obj[key]
+
+      if (definition && x != null)
+        bindKeys(scope, x, definition, matchNode, keyPath)
+      else if (change) change(matchNode, x, null, keyPath)
+
+      continue
+    }
+
+    activeNodes = meta.activeNodes
+    if (!activeNodes.length) continue
+
+    valueIsArray = meta.valueIsArray
+    x = valueIsArray ? obj[key] : [ obj[key] ]
+    index = 0
+    treeWalker = document.createTreeWalker(matchNode, NodeFilter.SHOW_ELEMENT)
+
+    while (index < activeNodes.length && treeWalker.nextNode()) {
+      currentNode = activeNodes[index]
+      if (treeWalker.currentNode.isEqualNode(currentNode)) {
+        activeNodes.splice(index, 1, treeWalker.currentNode)
+
+        value = x[index]
+        endPath = keyPath
+
+        if (valueIsArray)
+          endPath = addToPath(keyPath, keyPath, index)
+
+        if (definition) {
+          rehydrate(scope, value, definition,
+            currentNode, treeWalker.currentNode)
+
+          if (mount) {
+            findTarget(endPath, keyPath)
+            mount(treeWalker.currentNode, value, null, endPath)
+          }
+        }
+        else if (change)
+          change(treeWalker.currentNode, value, null, endPath)
+
+        index++
+      }
+    }
+
+    if (index !== activeNodes.length) throw new Error(
+      'Matching nodes could not be found on key "' + key + '".')
+
+    // Rehydrate marker node.
+    currentNode = treeWalker.currentNode
+
+    // Ignore comment node setting, comment may already exist.
+    markerMap.set(branch, currentNode.parentNode.insertBefore(
+      document.createTextNode(''), currentNode.nextSibling))
+  }
+}
+
+},{"./bind_keys":1,"./key_map":5,"./process_nodes":6}],8:[function(require,module,exports){
 window.simulacra = require('../lib/index')
 
-},{"../lib/index":3}]},{},[6]);
+},{"../lib/index":4}]},{},[8]);

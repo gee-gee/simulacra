@@ -1,6 +1,6 @@
 /*!
  * Simulacra.js
- * Version 1.5.1
+ * Version 1.5.5
  * MIT License
  * http://simulacra.js.org/
  */
@@ -80,7 +80,6 @@ function bindKeys (scope, obj, def, parentNode, path) {
 
 // This is an internal function, the arguments aren't pretty.
 function bindKey (scope, obj, def, key, parentNode, path) {
-  var document = scope ? scope.document : window.document
   var memo = storeMemo.get(obj)
   var meta = storeMeta.get(obj)[key]
   var branch = def[key]
@@ -134,15 +133,30 @@ function bindKey (scope, obj, def, key, parentNode, path) {
 
   function setter (x) {
     var marker = markerMap.get(branch)
-    var fragment, value, currentNode
+    var value, currentNode
     var a, b, i, j
 
     valueIsArray = meta.valueIsArray = Array.isArray(x)
+    value = valueIsArray ? x : [ x ]
 
-    // Assign custom mutator methods on the array instance.
+    for (i = 0, j = Math.max(previousValues.length, value.length);
+      i < j; i++) {
+      a = value[i]
+      b = previousValues[i]
+      currentNode = !a || a !== b ? replaceNode(a, b, i) : null
+
+      if (currentNode)
+        marker.parentNode.insertBefore(currentNode,
+          getNextNode(i + 1, activeNodes) || marker)
+    }
+
+    // Reset length to current values, implicitly deleting indices and
+    // allowing for garbage collection.
+    if (value.length !== previousValues.length)
+      previousValues.length = activeNodes.length = value.length
+
+    // Assign array mutator methods.
     if (valueIsArray) {
-      value = x
-
       // Some mutators such as `sort`, `reverse`, `fill`, `copyWithin` are
       // not present here. That is because they trigger the array index
       // setter functions by assigning on them internally.
@@ -158,38 +172,6 @@ function bindKey (scope, obj, def, key, parentNode, path) {
       for (i = 0, j = value.length; i < j; i++)
         defineIndex(value, i)
     }
-    else value = [ x ]
-
-    // Handle rendering to the DOM. This algorithm tries to batch insertions
-    // into as few document fragments as possible.
-    for (i = 0, j = Math.max(previousValues.length, value.length);
-      i < j; i++) {
-      a = value[i]
-      b = previousValues[i]
-      currentNode = a !== b ? replaceNode(a, b, i) : null
-
-      if (currentNode) {
-        if (!fragment) fragment = document.createDocumentFragment()
-        fragment.appendChild(currentNode)
-        continue
-      }
-
-      // If the value was empty and a current fragment exists, need to insert
-      // the current document fragment.
-      if (!fragment) continue
-
-      marker.parentNode.insertBefore(fragment,
-        getNextNode(i + 1, activeNodes) || marker)
-    }
-
-    // Terminal behavior.
-    if (fragment)
-      marker.parentNode.insertBefore(fragment, marker)
-
-    // Reset length to current values, implicitly deleting indices and
-    // allowing for garbage collection.
-    if (value.length !== previousValues.length)
-      previousValues.length = activeNodes.length = value.length
 
     // If nothing went wrong, set the memoized value.
     memo[key] = x
@@ -327,21 +309,17 @@ function bindKey (scope, obj, def, key, parentNode, path) {
   function push () {
     var marker = markerMap.get(branch)
     var i = this.length
-    var j, fragment, currentNode
+    var j = i + arguments.length
+    var currentNode
 
     // Passing arguments to apply is fine.
     var value = Array.prototype.push.apply(this, arguments)
 
-    if (arguments.length) {
-      fragment = document.createDocumentFragment()
-
-      for (j = i + arguments.length; i < j; i++) {
-        currentNode = replaceNode(this[i], null, i)
-        if (currentNode) fragment.appendChild(currentNode)
-        defineIndex(this, i)
-      }
-
-      marker.parentNode.insertBefore(fragment, marker)
+    for (j = i + arguments.length; i < j; i++) {
+      currentNode = replaceNode(this[i], null, i)
+      if (currentNode)
+        marker.parentNode.insertBefore(currentNode, marker)
+      defineIndex(this, i)
     }
 
     return value
@@ -359,7 +337,7 @@ function bindKey (scope, obj, def, key, parentNode, path) {
   function unshift () {
     var marker = markerMap.get(branch)
     var i = this.length
-    var j, k, fragment, currentNode
+    var j, k, currentNode
 
     // Passing arguments to apply is fine.
     var value = Array.prototype.unshift.apply(this, arguments)
@@ -367,19 +345,14 @@ function bindKey (scope, obj, def, key, parentNode, path) {
     Array.prototype.unshift.apply(previousValues, arguments)
     Array.prototype.unshift.apply(activeNodes, Array(k))
 
-    if (arguments.length) {
-      fragment = document.createDocumentFragment()
-
-      for (j = 0, k = arguments.length; j < k; j++) {
-        currentNode = replaceNode(arguments[j], null, j)
-        if (currentNode) fragment.appendChild(currentNode)
-      }
-
-      for (j = i + arguments.length; i < j; i++) defineIndex(this, i)
-
-      marker.parentNode.insertBefore(fragment,
-        getNextNode(arguments.length, activeNodes) || marker)
+    for (j = 0, k = arguments.length; j < k; j++) {
+      currentNode = replaceNode(arguments[j], null, j)
+      if (currentNode)
+        marker.parentNode.insertBefore(currentNode,
+          getNextNode(arguments.length, activeNodes) || marker)
     }
+
+    for (j = i + arguments.length; i < j; i++) defineIndex(this, i)
 
     return value
   }
@@ -387,7 +360,7 @@ function bindKey (scope, obj, def, key, parentNode, path) {
   function splice (start, count) {
     var marker = markerMap.get(branch)
     var insert = []
-    var i, j, k, fragment, value, currentNode
+    var i, j, k, value, currentNode
 
     for (i = start, j = start + count; i < j; i++)
       removeNode(null, previousValues[i], i)
@@ -404,16 +377,11 @@ function bindKey (scope, obj, def, key, parentNode, path) {
 
     value = Array.prototype.splice.apply(this, arguments)
 
-    if (insert.length) {
-      fragment = document.createDocumentFragment()
-
-      for (i = start + insert.length - 1, j = start; i >= j; i--) {
-        currentNode = replaceNode(insert[i - start], null, i)
-        if (currentNode) fragment.appendChild(currentNode)
-      }
-
-      marker.parentNode.insertBefore(fragment,
-        getNextNode(start + insert.length, activeNodes) || marker)
+    for (i = start + insert.length - 1, j = start; i >= j; i--) {
+      currentNode = replaceNode(insert[i - start], null, i)
+      if (currentNode)
+        marker.parentNode.insertBefore(currentNode,
+          getNextNode(start + insert.length, activeNodes) || marker)
     }
 
     k = insert.length - count
@@ -433,6 +401,10 @@ function bindKey (scope, obj, def, key, parentNode, path) {
 // Default behavior when a return value is given for a change function.
 function changeValue (node, value, attribute) {
   switch (attribute) {
+  case 'textContent':
+    if (node.firstChild) node.firstChild.textContent = value
+    else node.textContent = value
+    break
   case 'checked':
     node.checked = Boolean(value)
     break
@@ -442,7 +414,7 @@ function changeValue (node, value, attribute) {
     if (node.value !== value) node.value = value
     break
   default:
-    node[attribute] = value
+    break
   }
 }
 
@@ -520,9 +492,7 @@ function featureCheck (globalScope) {
     [ WeakMap ],
 
     // DOM features.
-    [ 'document', 'createDocumentFragment' ],
     [ 'document', 'createTreeWalker' ],
-    [ 'Node', 'prototype', 'appendChild' ],
     [ 'Node', 'prototype', 'contains' ],
     [ 'Node', 'prototype', 'insertBefore' ],
     [ 'Node', 'prototype', 'isEqualNode' ],
@@ -932,6 +902,7 @@ for (i = 0, j = keys.length; i < j; i++)
 module.exports = keyMap
 
 },{}],6:[function(require,module,exports){
+
 'use strict'
 
 var keyMap = require('./key_map')
@@ -941,6 +912,9 @@ var isBoundToParentKey = keyMap.isBoundToParent
 // Map from definition branches to marker nodes. This is necessary because the
 // definitions are frozen and cannot be written to.
 var markerMap = processNodes.markerMap = new WeakMap()
+
+// Internal map from already processed definitions to ready-to-use nodes.
+var templateMap = new WeakMap()
 
 // Option to use comment nodes as markers.
 processNodes.useCommentNode = false
@@ -959,30 +933,67 @@ module.exports = processNodes
  */
 function processNodes (scope, node, def) {
   var document = scope ? scope.document : window.document
-  var key, branch, mirrorNode, parent, marker, map
+  var key, branch, result, mirrorNode, parent, marker, map, indices
+  var i, j, treeWalker
 
-  node = node.cloneNode(true)
-  map = matchNodes(scope, node, def)
+  result = templateMap.get(def)
 
-  for (key in def) {
-    branch = def[key]
-    if (branch[isBoundToParentKey]) continue
+  if (!result) {
+    node = node.cloneNode(true)
+    map = matchNodes(scope, node, def)
+    indices = []
 
-    mirrorNode = map.get(branch[0])
-    parent = mirrorNode.parentNode
+    for (key in def) {
+      branch = def[key]
+      if (branch[isBoundToParentKey]) continue
 
-    if (processNodes.useCommentNode) {
-      marker = parent.insertBefore(document.createComment(
-          ' end "' + key + '" '), mirrorNode)
-      parent.insertBefore(document.createComment(
-        ' begin "' + key + '" '), marker)
+      result = map.get(branch[0])
+      indices.push(result.index)
+      mirrorNode = result.node
+      parent = mirrorNode.parentNode
+
+      if (processNodes.useCommentNode) {
+        marker = parent.insertBefore(document.createComment(
+            ' end "' + key + '" '), mirrorNode)
+        parent.insertBefore(document.createComment(
+          ' begin "' + key + '" '), marker)
+      }
+      else marker = parent.insertBefore(
+        document.createTextNode(''), mirrorNode)
+
+      markerMap.set(branch, marker)
+
+      parent.removeChild(mirrorNode)
     }
-    else marker = parent.insertBefore(
-      document.createTextNode(''), mirrorNode)
 
-    markerMap.set(branch, marker)
+    templateMap.set(def, {
+      node: node.cloneNode(true),
+      indices: indices
+    })
+  }
+  else {
+    node = result.node.cloneNode(true)
+    indices = result.indices
+    i = 0
+    j = 0
 
-    parent.removeChild(mirrorNode)
+    treeWalker = document.createTreeWalker(node)
+
+    for (key in def) {
+      branch = def[key]
+      if (branch[isBoundToParentKey]) continue
+
+      while (treeWalker.nextNode()) {
+        if (i === indices[j]) {
+          markerMap.set(branch, treeWalker.currentNode)
+          i++
+          break
+        }
+        i++
+      }
+
+      j++
+    }
   }
 
   return node
@@ -999,23 +1010,37 @@ function processNodes (scope, node, def) {
  */
 function matchNodes (scope, node, def) {
   var document = scope ? scope.document : window.document
-  var NodeFilter = scope ? scope.NodeFilter : window.NodeFilter
-  var treeWalker = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT)
+  var treeWalker = document.createTreeWalker(node)
   var map = new WeakMap()
   var nodes = []
-  var i, j, key, currentNode
+  var i, j, key, currentNode, childWalker
+  var nodeIndex = 0
+
+  // This offset is a bit tricky, it's used to determine the index of the
+  // marker in the processed node, which depends on whether comment nodes
+  // are used and the count of child nodes.
+  var offset = processNodes.useCommentNode ? 1 : 0
 
   for (key in def) nodes.push(def[key][0])
 
-  while (treeWalker.nextNode() && nodes.length)
+  while (treeWalker.nextNode() && nodes.length) {
     for (i = 0, j = nodes.length; i < j; i++) {
       currentNode = nodes[i]
       if (treeWalker.currentNode.isEqualNode(currentNode)) {
-        map.set(currentNode, treeWalker.currentNode)
+        map.set(currentNode, {
+          index: nodeIndex + offset,
+          node: treeWalker.currentNode
+        })
+        if (processNodes.useCommentNode) offset++
+        childWalker = document.createTreeWalker(currentNode)
+        while (childWalker.nextNode()) offset--
         nodes.splice(i, 1)
         break
       }
     }
+
+    nodeIndex++
+  }
 
   return map
 }

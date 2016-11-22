@@ -1,6 +1,6 @@
 /*!
  * Simulacra.js
- * Version 1.5.5
+ * Version 1.5.6
  * MIT License
  * http://simulacra.js.org/
  */
@@ -400,9 +400,13 @@ function bindKey (scope, obj, def, key, parentNode, path) {
 
 // Default behavior when a return value is given for a change function.
 function changeValue (node, value, attribute) {
+  var firstChild
+
   switch (attribute) {
   case 'textContent':
-    if (node.firstChild) node.firstChild.textContent = value
+    firstChild = node.firstChild
+    if (firstChild && !firstChild.nextSibling && firstChild.nodeType === 3)
+      firstChild.textContent = value
     else node.textContent = value
     break
   case 'checked':

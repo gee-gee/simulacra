@@ -1,6 +1,6 @@
 /*!
  * Simulacra.js
- * Version 1.5.6
+ * Version 1.5.7
  * MIT License
  * http://simulacra.js.org/
  */
@@ -273,9 +273,12 @@ function bindKey (scope, obj, def, key, parentNode, path) {
       else {
         // Add default update behavior. Note that this event does not get
         // removed, since it is assumed that it will be garbage collected.
-        if (previousValue === null && ~updateTags.indexOf(currentNode.tagName))
+        if (previousValue === null &&
+          ~updateTags.indexOf(currentNode.tagName)) {
+          findTarget(endPath, keyPath)
           currentNode.addEventListener('input',
             updateChange(branch[replaceAttributeKey], endPath, key))
+        }
 
         changeValue(currentNode, value, branch[replaceAttributeKey])
       }
@@ -454,7 +457,7 @@ function findTarget (endPath, keyPath) {
 
   endPath.target = endPath.root
 
-  for (i = 0, j = keyPath.length - 1; i < j; j++)
+  for (i = 0, j = keyPath.length - 1; i < j; i++)
     endPath.target = endPath.target[keyPath[i]]
 }
 

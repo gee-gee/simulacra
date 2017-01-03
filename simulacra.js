@@ -206,7 +206,6 @@ function bindKey (scope, obj, def, key, parentNode, path) {
   function removeNode (value, previousValue, i) {
     var marker = markerMap.get(branch)
     var activeNode = activeNodes[i]
-    var endPath = keyPath
     var returnValue
 
     delete previousValues[i]
@@ -214,14 +213,10 @@ function bindKey (scope, obj, def, key, parentNode, path) {
     if (activeNode) {
       delete activeNodes[i]
 
-      if (valueIsArray) endPath = addToPath(path, keyPath, i)
-
       if (change)
-        returnValue = change(activeNode, null, previousValue, endPath)
-      else if (definition && mount) {
-        findTarget(endPath, keyPath)
-        returnValue = mount(activeNode, null, previousValue, endPath)
-      }
+        returnValue = change(activeNode, null, previousValue)
+      else if (definition && mount)
+        returnValue = mount(activeNode, null, previousValue)
 
       // If a change or mount function returns the retain element symbol,
       // skip removing the element from the DOM.
@@ -234,8 +229,7 @@ function bindKey (scope, obj, def, key, parentNode, path) {
   function replaceNode (value, previousValue, i) {
     var activeNode = activeNodes[i]
     var currentNode = node
-    var endPath = keyPath
-    var returnValue
+    var endPath, returnValue
 
     // Cast values to null if undefined.
     if (value === void 0) value = null
@@ -247,19 +241,20 @@ function bindKey (scope, obj, def, key, parentNode, path) {
       return null
     }
 
-    if (valueIsArray) endPath = addToPath(path, keyPath, i)
+    if (previousValue === null) {
+      endPath = keyPath
+      if (valueIsArray) endPath = addToPath(path, keyPath, i)
+      if (definition) endPath.target = valueIsArray ? value[i] : value
+      if (mount) findTarget(endPath, keyPath)
+    }
 
     previousValues[i] = value
 
     if (definition) {
       if (activeNode) removeNode(value, previousValue, i)
       currentNode = processNodes(scope, node, definition)
-      endPath.target = valueIsArray ? value[i] : value
       bindKeys(scope, value, definition, currentNode, endPath)
-      if (mount) {
-        findTarget(endPath, keyPath)
-        mount(currentNode, value, null, endPath)
-      }
+      if (mount) mount(currentNode, value, null, endPath)
     }
 
     else {

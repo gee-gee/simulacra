@@ -1,6 +1,6 @@
 /*!
  * Simulacra.js
- * Version 1.5.7
+ * Version 2.0.1
  * MIT License
  * http://simulacra.js.org/
  */
@@ -33,8 +33,6 @@ module.exports = bindKeys
 
 // Expose internals, for rehydration purposes.
 bindKeys.storeMeta = storeMeta
-bindKeys.addToPath = addToPath
-bindKeys.findTarget = findTarget
 
 
 /**
@@ -50,7 +48,7 @@ bindKeys.findTarget = findTarget
  * @param {Array} path
  */
 function bindKeys (scope, obj, def, parentNode, path) {
-  var meta, key, keyPath
+  var meta, key
 
   if (typeof obj !== 'object' || obj === null)
     throw new TypeError(
@@ -62,24 +60,24 @@ function bindKeys (scope, obj, def, parentNode, path) {
   storeMeta.set(obj, meta)
 
   for (key in def) {
-    keyPath = path.concat(key)
-    keyPath.root = path.root
-    keyPath.target = obj
-
     meta[key] = {
-      keyPath: keyPath,
+      keyPath: {
+        key: key,
+        root: path.root,
+        target: obj
+      },
       activeNodes: [],
       previousValues: [],
       valueIsArray: null
     }
 
-    bindKey(scope, obj, def, key, parentNode, path)
+    bindKey(scope, obj, def, key, parentNode)
   }
 }
 
 
 // This is an internal function, the arguments aren't pretty.
-function bindKey (scope, obj, def, key, parentNode, path) {
+function bindKey (scope, obj, def, key, parentNode) {
   var memo = storeMemo.get(obj)
   var meta = storeMeta.get(obj)[key]
   var branch = def[key]
@@ -213,10 +211,15 @@ function bindKey (scope, obj, def, key, parentNode, path) {
     if (activeNode) {
       delete activeNodes[i]
 
+      if (valueIsArray) keyPath.index = i
+      else delete keyPath.index
+
       if (change)
-        returnValue = change(activeNode, null, previousValue)
-      else if (definition && mount)
-        returnValue = mount(activeNode, null, previousValue)
+        returnValue = change(activeNode, null, previousValue, keyPath)
+      else if (definition && mount) {
+        keyPath.target = previousValue
+        returnValue = mount(activeNode, null, previousValue, keyPath)
+      }
 
       // If a change or mount function returns the retain element symbol,
       // skip removing the element from the DOM.
@@ -229,7 +232,7 @@ function bindKey (scope, obj, def, key, parentNode, path) {
   function replaceNode (value, previousValue, i) {
     var activeNode = activeNodes[i]
     var currentNode = node
-    var endPath, returnValue
+    var returnValue
 
     // Cast values to null if undefined.
     if (value === void 0) value = null
@@ -241,27 +244,27 @@ function bindKey (scope, obj, def, key, parentNode, path) {
       return null
     }
 
-    if (previousValue === null) {
-      endPath = keyPath
-      if (valueIsArray) endPath = addToPath(path, keyPath, i)
-      if (definition) endPath.target = valueIsArray ? value[i] : value
-      if (mount) findTarget(endPath, keyPath)
-    }
+    if (valueIsArray) keyPath.index = i
+    else delete keyPath.index
 
     previousValues[i] = value
 
     if (definition) {
       if (activeNode) removeNode(value, previousValue, i)
       currentNode = processNodes(scope, node, definition)
-      bindKeys(scope, value, definition, currentNode, endPath)
-      if (mount) mount(currentNode, value, null, endPath)
+      keyPath.target = valueIsArray ? value[i] : value
+      bindKeys(scope, value, definition, currentNode, keyPath)
+      if (mount) {
+        keyPath.target = value
+        mount(currentNode, value, null, keyPath)
+      }
     }
 
     else {
       currentNode = activeNode || node.cloneNode(true)
 
       if (change) {
-        returnValue = change(currentNode, value, previousValue, endPath)
+        returnValue = change(currentNode, value, previousValue, keyPath)
         if (returnValue !== void 0)
           changeValue(currentNode, returnValue, branch[replaceAttributeKey])
       }
@@ -269,11 +272,9 @@ function bindKey (scope, obj, def, key, parentNode, path) {
         // Add default update behavior. Note that this event does not get
         // removed, since it is assumed that it will be garbage collected.
         if (previousValue === null &&
-          ~updateTags.indexOf(currentNode.tagName)) {
-          findTarget(endPath, keyPath)
+          ~updateTags.indexOf(currentNode.tagName))
           currentNode.addEventListener('input',
-            updateChange(branch[replaceAttributeKey], endPath, key))
-        }
+            updateChange(branch[replaceAttributeKey], keyPath, key))
 
         changeValue(currentNode, value, branch[replaceAttributeKey])
       }
@@ -435,37 +436,15 @@ function getNextNode (index, activeNodes) {
 }
 
 
-// Add index to the end of a path.
-function addToPath (path, keyPath, i) {
-  var endPath = keyPath.concat(i)
-
-  endPath.root = path.root
-  endPath.target = path.target || path.root
-
-  return endPath
-}
-
-
-// Find and set the new target, when dealing with nested objects.
-function findTarget (endPath, keyPath) {
-  var i, j
-
-  endPath.target = endPath.root
-
-  for (i = 0, j = keyPath.length - 1; i < j; i++)
-    endPath.target = endPath.target[keyPath[i]]
-}
-
-
 // Internal event listener to update data on input change.
 function updateChange (targetKey, path, key) {
   var target = path.target
-  var lastKey = path[path.length - 1]
+  var index = path.index
   var replaceKey = key
 
-  if (typeof lastKey === 'number') {
+  if (typeof index === 'number') {
     target = target[key]
-    replaceKey = lastKey
+    replaceKey = index
   }
 
   return function handleChange (event) {
@@ -540,18 +519,8 @@ var hasDocument = typeof document !== 'undefined'
 
 
 module.exports = {
-  setDefault: setDefault,
   bindEvents: bindEvents,
-  animate: animate,
-  flow: flow,
-
-  // Alias for flow.
-  chain: flow
-}
-
-
-function setDefault (node, value) {
-  return value != null ? value : void 0
+  animate: animate
 }
 
 
@@ -645,22 +614,6 @@ function animate (insertClass, mutateClass, removeClass, retainTime) {
   }
 }
 
-
-function flow () {
-  var args = arguments
-
-  return function (node, value, previousValue, path) {
-    var i, returnValue, result
-
-    for (i = 0; i < args.length; i++) {
-      returnValue = args[i](node, value, previousValue, path)
-      if (returnValue !== void 0) result = returnValue
-    }
-
-    return result
-  }
-}
-
 },{"./key_map":5}],4:[function(require,module,exports){
 'use strict'
 
@@ -715,7 +668,7 @@ module.exports = simulacra
 function simulacra (obj, def, matchNode) {
   var document = this ? this.document : window.document
   var Node = this ? this.Node : window.Node
-  var node, query, path
+  var node, query
 
   featureCheck(this || window)
 
@@ -745,9 +698,7 @@ function simulacra (obj, def, matchNode) {
 
   node = processNodes(this, def[0], def[1])
 
-  path = []
-  path.root = obj
-  bindKeys(this, obj, def[1], node, path)
+  bindKeys(this, obj, def[1], node, { root: obj })
 
   if (matchNode) {
     rehydrate(this, obj, def[1], node, matchNode)
@@ -1061,8 +1012,6 @@ var hasDefinitionKey = keyMap.hasDefinition
 var isBoundToParentKey = keyMap.isBoundToParent
 var markerMap = processNodes.markerMap
 var storeMeta = bindKeys.storeMeta
-var addToPath = bindKeys.addToPath
-var findTarget = bindKeys.findTarget
 
 
 module.exports = rehydrate
@@ -1081,7 +1030,7 @@ function rehydrate (scope, obj, def, node, matchNode) {
   var document = scope ? scope.document : window.document
   var NodeFilter = scope ? scope.NodeFilter : window.NodeFilter
 
-  var key, branch, x, value, change, definition, mount, keyPath, endPath
+  var key, branch, x, value, change, definition, mount, keyPath
   var meta, valueIsArray, activeNodes, index, treeWalker, currentNode
 
   for (key in def) {
@@ -1097,7 +1046,8 @@ function rehydrate (scope, obj, def, node, matchNode) {
 
       if (definition && x != null)
         bindKeys(scope, x, definition, matchNode, keyPath)
-      else if (change) change(matchNode, x, null, keyPath)
+      else if (change)
+        change(matchNode, x, null, keyPath)
 
       continue
     }
@@ -1116,22 +1066,21 @@ function rehydrate (scope, obj, def, node, matchNode) {
         activeNodes.splice(index, 1, treeWalker.currentNode)
 
         value = x[index]
-        endPath = keyPath
 
-        if (valueIsArray)
-          endPath = addToPath(keyPath, keyPath, index)
+        if (valueIsArray) keyPath.index = index
+        else delete keyPath.index
 
         if (definition) {
           rehydrate(scope, value, definition,
             currentNode, treeWalker.currentNode)
 
           if (mount) {
-            findTarget(endPath, keyPath)
-            mount(treeWalker.currentNode, value, null, endPath)
+            keyPath.target = value
+            mount(treeWalker.currentNode, value, null, keyPath)
           }
         }
         else if (change)
-          change(treeWalker.currentNode, value, null, endPath)
+          change(treeWalker.currentNode, value, null, keyPath)
 
         index++
       }
